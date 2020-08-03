@@ -14,7 +14,7 @@ Grabbity = class(
         TARGET_LOST_DELAY = 0.5;
         TETHER_LOST_DELAY = 0.05;
 
-        MIN_AIR_TIME = 0.5;
+        MIN_AIR_TIME = 0.4;
         MAX_AIR_TIME = 1.0;
         TOO_HEAVY_MIN_AIR_TIME = 0.12;
         TOO_HEAVY_MAX_AIR_TIME = 0.45;
@@ -23,7 +23,7 @@ Grabbity = class(
         FORCE_IMPULSE_DURATION = 0.1;
         MANHACK_UPDATE_INTERVAL = 1 / 90;  -- TODO: Make dependant on framerate?
         
-        HIGHLIGHT_ALPHA = 0;
+        HIGHLIGHT_ALPHA = 1;
         TETHER_ALPHA = 1;
         TETHER_ALTERNATE_ALPHA = 1;
         TETHER_EMBER_EMISSION_RATE = 1;
@@ -31,7 +31,7 @@ Grabbity = class(
 
         HAPTIC_TETHER;
 
-        PARTICLE_HIGHLIGHT;
+        PARTICLE_HIGHLIGHTS;
         PARTICLE_TETHER;
         PARTICLE_EMBERS;
 
@@ -48,6 +48,9 @@ Grabbity = class(
 
         eventList;
 
+        enabled;
+        nearVortEnergy;
+
 
 
         constructor = function (self, glove)
@@ -57,6 +60,9 @@ Grabbity = class(
             self.targetIndicator = false
             self.hasTarget = false
             self.hasTether = false
+
+            self.enabled = true
+            self.nearVortEnergy = false
 
             local validityOverride = Grabbity.VALIDITY_OVERRIDE
             self.targetValidity = glove.tether.targetValidity:Copy(validityOverride)
@@ -74,7 +80,29 @@ Grabbity = class(
 
             self.HAPTIC_TETHER = HapticSequence(glove.UPDATE_INTERVAL, 0.01, 0.05)--1/393)
 
-            self.PARTICLE_HIGHLIGHT = ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf")
+            self.PARTICLE_HIGHLIGHTS = {
+                -- 20 particle systems should be enough; certainly more than a user would ever notice
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+                ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf");
+            }
             self.PARTICLE_TETHER = ParticleSystem("particles/weapon_fx/gravity_glove_hand_rope.vpcf")
             self.PARTICLE_EMBERS = ParticleSystem("particles/weapon_fx/gravity_glove_hand_bits.vpcf")
             
@@ -96,6 +124,8 @@ Grabbity = class(
             self.eventList = {
                 ListenToGameEvent("item_pickup", function(context) self:CheckPickup(context, glove) end, nil)  -- What's the purpose of the third parameter, set nil here?
             }
+
+            glove.hand:SetThink(function() return self:WatchForVortEnergy(glove) end, "Watching" .. glove.IDENTIFIER .. "ForGrabbity" .. UniqueString() .. "VortEnergy")
             
         end;
 
@@ -103,35 +133,38 @@ Grabbity = class(
 
         DispatchBehaviour = function (self, glove)
 
-            if self.hasTether then
-                if (self.tetherValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) <= 0) then
-                    glove:PrintVerbose("Grabbity tether has become invalid")
-                    self:OnUntether(glove)
-                    glove.alreadyFired = true
-                end
-            end
+            if self.enabled then
 
-            if not glove.alreadyFired then
-
-                if glove.tether.tetheredEntity then
-
-                    local forwardReference = glove.tether.tetheredEntity:GetCenter() - glove.hand:GetAbsOrigin()
-
-                    --[[
-                    local forward = ApplyAngleOffset(nil, self.gesture.angleOffset, glove.motion.angles:Forward(), glove.motion.angles:Up())
-                    CustomDebug.DrawCone(glove.hand:GetAbsOrigin(), forward, glove.hand:GetUpVector(), self.gesture.maxMotionIncidence, 10, 255, 0, 0, true, glove.UPDATE_INTERVAL)
-                    forward = ApplyAngleOffset(nil, self.gesture.angleOffset, forwardReference, glove.motion.angles:Up())
-                    CustomDebug.DrawCone(glove.hand:GetAbsOrigin(), forward, glove.hand:GetUpVector(), self.gesture.maxMotionIncidence, 10, 127, 0, 0, true, glove.UPDATE_INTERVAL)
-                    --]]
-
-                    if (self.gesture:IsGesturing(glove.motion, forwardReference)) then
-                        glove:PrintVerbose("Grabbity gesture recognized")
-                        self:AccelerateToHand(glove)
+                if self.hasTether then
+                    if (self.tetherValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) <= 0) then
+                        glove:PrintVerbose("Grabbity tether has become invalid")
+                        self:OnUntether(glove)
                         glove.alreadyFired = true
-                        return true
                     end
                 end
 
+                if not glove.alreadyFired then
+
+                    if glove.tether.tetheredEntity then
+
+                        local forwardReference = glove.tether.tetheredEntity:GetCenter() - glove.hand:GetAbsOrigin()
+
+                        --[[
+                        local forward = ApplyAngleOffset(nil, self.gesture.angleOffset, glove.motion.angles:Forward(), glove.motion.angles:Up())
+                        CustomDebug.DrawCone(glove.hand:GetAbsOrigin(), forward, glove.hand:GetUpVector(), self.gesture.maxMotionIncidence, 10, 255, 0, 0, true, glove.UPDATE_INTERVAL)
+                        forward = ApplyAngleOffset(nil, self.gesture.angleOffset, forwardReference, glove.motion.angles:Up())
+                        CustomDebug.DrawCone(glove.hand:GetAbsOrigin(), forward, glove.hand:GetUpVector(), self.gesture.maxMotionIncidence, 10, 127, 0, 0, true, glove.UPDATE_INTERVAL)
+                        --]]
+
+                        if (self.gesture:IsGesturing(glove.motion, forwardReference))
+                        and (glove.tether.tetheredEntity:GetCenter() - glove.hand:GetCenter()):Length() > self.tetherValidity.minDistance then
+                            glove:PrintVerbose("Grabbity gesture recognized")
+                            self:AccelerateToHand(glove)
+                            glove.alreadyFired = true
+                            return true
+                        end
+                    end
+                end
             end
 
             return false
@@ -157,6 +190,7 @@ Grabbity = class(
                 local oneshot = false
 
                 -- Gnarly way to brute force letting the user grab items off of NPCs and ragdolls
+                -- Probably breaks some achievements, I/O, and game events
                 glove.tether.movingEntity = self:RespawnIfItemAttachment(glove.tether.movingEntity, glove)
                 
                 local delay = 0
@@ -164,6 +198,12 @@ Grabbity = class(
                 local aggressiveVelocity = false
 
                 local handToEntity = glove.tether.movingEntity:GetCenter() - glove.hand:GetAbsOrigin()
+                
+                if GetPhysVelocity(glove.tether.movingEntity) == Vector(0, 0, 0) then
+                    glove:PrintVerbose("Grabbity entity is stationary - Interacting and delaying just in case motion is disabled")
+                    EntFireByHandle(glove.hand, glove.tether.movingEntity, "EnableMotion") -- Annoying overhead to ensure you can grab the few resin that are stuck in xen goop
+                    delay = FrameTime()
+                end
 
                 if self.hasTether then
 
@@ -175,7 +215,8 @@ Grabbity = class(
                     refs.duration = Lerp(distanceFactor, self.MIN_AIR_TIME, self.MAX_AIR_TIME);
                     
                     -- TODO: Clean
-                    if glove.tether.movingEntity:GetClassname() == "prop_reviver_heart" then
+                    local entityClassname = glove.tether.movingEntity:GetClassname()
+                    if entityClassname == "prop_reviver_heart" then
                         local batteryPost = Entities:FindByModelWithin(nil, "models/props_combine/combine_battery/combine_battery_post.vmdl", glove.tether.movingEntity:GetCenter(), 50)
                         if IsValidEntity(batteryPost) then
                             local trigger = Entities:FindByClassnameNearest("trigger_multiple", glove.tether.movingEntity:GetCenter(), 10)
@@ -203,10 +244,8 @@ Grabbity = class(
                                 aggressiveVelocity = true
                             end
                         end
-                    elseif glove.tether.movingEntity:GetClassname():match("item_hlvr_crafting_currency_.+") then
-                        glove:PrintVerbose("Grabbity entity is Resin - Interacting and delaying just in case motion is disabled")
-                        EntFireByHandle(glove.hand, glove.tether.movingEntity, "EnableMotion") -- Annoying overhead to ensure you can grab the few resin that are stuck in xen goop
-                        delay = 1/30
+                    elseif entityClassname == "point_vort_energy" then
+                        --print("Vort energy is currently unsupported by the Glorious Gloves!")
                     end
 
                     glove:PlaySound("Grabbity.Grab")
@@ -257,7 +296,23 @@ Grabbity = class(
                     aggressiveVelocity = true
                 end
 
-                glove.tether.movingEntity:SetThink(function() return self:ApplyVelocityImpulse(glove, glove.tether.movingEntity, refs, interval, aggressiveVelocity) end, "AcceleratingToHandOverwritable", delay)
+                if glove.tether.movingEntity:GetClassname() == "item_hlvr_clip_shotgun_single" then
+                    local shells = Entities:FindAllByClassnameWithin("item_hlvr_clip_shotgun_single", glove.tether.movingEntity:GetCenter(), Grabbity.SHOTGUN_SHELL_SEARCH_RADIUS)
+                    glove:PrintVerbose("Grabbity target is shotgun shell - also grabbitying " .. #shells - 1 .. " nearby")
+                    for _, shell in pairs(shells) do
+                        local shellRefs = {
+                            initialVelocity = refs.initialVelocity;
+                            duration = refs.duration;
+                            durationTarget = refs.durationTarget;
+                            increment = refs.increment;
+                        }
+                        shell:SetThink(function() return self:ApplyVelocityImpulse(glove, shell, shellRefs, interval, aggressiveVelocity, true) end, "AcceleratingToHandOverwritable", delay)
+                    end
+                else
+                    glove.tether.movingEntity:SetThink(function() return self:ApplyVelocityImpulse(glove, glove.tether.movingEntity, refs, interval, aggressiveVelocity) end, "AcceleratingToHandOverwritable", delay)
+                end
+
+                glove.lastBehaviourTime = glove.motion.time
 
                 self.targetIndicator = false
                 glove.tether:Untether(glove)
@@ -269,7 +324,7 @@ Grabbity = class(
 
 
 
-        ApplyVelocityImpulse = function (self, glove, entity, refs, interval, aggressiveVelocity)
+        ApplyVelocityImpulse = function (self, glove, entity, refs, interval, aggressiveVelocity, movingEntityOverride)
 
             -- TODO: I didn't think I needed this.
             if IsValidEntity(entity) then
@@ -279,7 +334,7 @@ Grabbity = class(
                 
 
                 if (glove.enabled
-                and glove.tether.movingEntity == entity ) then
+                and (glove.tether.movingEntity == entity or movingEntityOverride) ) then
 
                     if refs.increment < refs.duration then
 
@@ -385,34 +440,45 @@ Grabbity = class(
 
 
         OnTarget = function (self, glove)
-            if (self.targetValidity:GetValidity(glove.hand, glove.tether.targetEntity) > 0) then
-                glove:PrintVerbose("Target is valid for Grabbity")
-                self:SpawnHighlight(glove, glove.tether.targetEntity)
-                self.hasTarget = true
-                return true
-            else
-                self:OnUntarget(glove)
-                if IsValidEntity(glove.tether.targetEntity) and not IsValidEntity(glove.tether.tetheredEntity) then
-                    -- TODO: Is this unsafe?  Should probably be associated with ValidateTarget in Tether or something
-                    --       ^ Regardless of safety, I'm not comfortable with this constant isolated loop
-                    glove.hand:SetThink(function() self:OnTarget(glove) end, "GrabbityTarget" .. UniqueString() .. "Validation", glove.UPDATE_INTERVAL)
+            if self.enabled then
+                if (self.targetValidity:GetValidity(glove.hand, glove.tether.targetEntity) > 0) then
+                    glove:PrintVerbose("Target is valid for Grabbity")
+                    self:SpawnHighlight(glove, glove.tether.targetEntity)
+                    self.hasTarget = true
+                    return true
+                else
+                    self:OnUntarget(glove)
+                    if IsValidEntity(glove.tether.targetEntity) and not IsValidEntity(glove.tether.tetheredEntity) then
+                        -- TODO: Is this unsafe?  Should probably be associated with ValidateTarget in Tether or something
+                        --       ^ Regardless of safety, I'm not comfortable with this constant isolated loop
+                        glove.hand:SetThink(function() self:OnTarget(glove) end, "GrabbityTarget" .. UniqueString() .. "Validation", glove.UPDATE_INTERVAL)
+                    end
                 end
             end
             return false
         end;
 
         OnTether = function (self, glove)
-            if (self.tetherValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) > 0) then
-                glove:PrintVerbose("Tether is valid for Grabbity")
-                self:SpawnTether(glove)
-                if (glove.tether.tetheredEntity ~= glove.tether.movingEntity) then
-                    glove.tether.movingEntity = nil
+            if self.enabled then
+                if (self.tetherValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) > 0) then
+                    glove:PrintVerbose("Tether is valid for Grabbity")
+                    --[[print(glove.tether.tetheredEntity:GetRenderAlpha())
+                    print(glove.tether.tetheredEntity:GetRenderColor())
+                    print(glove.tether.tetheredEntity:GetClassname())
+                    print(glove.tether.tetheredEntity:GetModelName())
+                    print(glove.tether.tetheredEntity:GetName())
+                    print(glove.tether.tetheredEntity:GetAbsScale())
+                    print(glove.tether.tetheredEntity:GetMass())--]]
+                    self:SpawnTether(glove)
+                    if (glove.tether.tetheredEntity ~= glove.tether.movingEntity) then
+                        glove.tether.movingEntity = nil
+                    end
+                    self.hasTether = true
+                    return true
+                else
+                    self:OnUntether(glove)
+                    return false
                 end
-                self.hasTether = true
-                return true
-            else
-                self:OnUntether(glove)
-                return false
             end
         end;
 
@@ -455,14 +521,27 @@ Grabbity = class(
             if entity:GetClassname() ~= "prop_ragdoll" then
 
                 glove:PrintVerbose("Spawning Grabbity highlight")
-                
-                particles = {
-                    self.PARTICLE_HIGHLIGHT:Create( {
-                        [0] = ParticleSystem.ControlPoint(entity);
-                        [1] = ParticleSystem.ControlPoint(entity);
-                        [2] = ParticleSystem.ControlPoint(nil, Vector(entity:GetAbsScale(), self.HIGHLIGHT_ALPHA, 0));
-                    }, true )
-                }
+
+                -- Ugh had too many problems with trying to use one particle system class with highlighting
+                -- hope there aren't memory leaks
+                --self.PARTICLE_HIGHLIGHT = ParticleSystem("particles/weapon_fx/grabbity_gloves.vpcf")
+
+                local available = 0
+                for i, system in pairs(self.PARTICLE_HIGHLIGHTS) do
+                    if system.available then available = i break end
+                end
+
+                if available > 0 then
+                    glove:PrintVerbose("Grabbity highlight is using particle system " .. available)
+                    particles = {
+                        self.PARTICLE_HIGHLIGHTS[available]:Create( {
+                            [0] = ParticleSystem.ControlPoint(entity);
+                            [1] = ParticleSystem.ControlPoint(entity);
+                            [2] = ParticleSystem.ControlPoint(nil, Vector(entity:GetAbsScale(), self.HIGHLIGHT_ALPHA, 0));
+                        }, true )
+                    }
+
+                end
                 
                 if not self.targetIndicator then
                     glove:OpenClaws()
@@ -474,7 +553,9 @@ Grabbity = class(
             end
 
             local ref = { entIndex = entity:GetEntityIndex(); }
-            glove.hand:SetThink(function() return self:MaintainHighlight(glove, entity, particles, ref) end, "MaintainHighLight" .. self.PARTICLE_HIGHLIGHT.IDENTIFIER .. UniqueString())
+            if particles[1] then
+                particles[1].particleSystem:SetThink(function() return self:MaintainHighlight(glove, entity, particles, ref) end, "MaintainHighLight")
+            end
             
             local tInfo = {
                 ["userid"] = Entities:GetLocalPlayer():GetUserID();
@@ -492,13 +573,15 @@ Grabbity = class(
         MaintainHighlight = function (self, glove, entity, particles, ref)
 
             if not glove.enabled
+            or not self.enabled
+            or (not self.hasTarget and not self.hasTether)
              or ((self.targetValidity:GetValidity(glove.hand, entity) <= 0 or glove.tether.targetEntity ~= entity)
              and (self.tetherValidity:GetValidity(glove.hand, entity) <= 0 or glove.tether.tetheredEntity ~= entity) ) then
                 
                 glove:PrintVerbose("Grabbity highlight is no longer valid - removing...")
 
                 for i, particle in pairs(particles) do
-                    particle:DisableParticleSystem(true, 0.05, true)
+                    particle:DisableParticleSystem(true, 0, true)
                 end
                 
                 local tInfo = {
@@ -571,7 +654,7 @@ Grabbity = class(
 
         MaintainTether = function (self, glove, entity, particles, ref)
 
-            if not glove.enabled
+            if not glove.enabled or not self.enabled
             or not self.hasTether
             or glove.tether.tetheredEntity ~= entity then
 
@@ -632,6 +715,46 @@ Grabbity = class(
 
             end
         end;
+        
+        
+        
+        WatchForVortEnergy = function (self, glove)
+            local vortEnergy = Entities:FindAllByClassnameWithin("point_vort_energy", Entities:GetLocalPlayer():GetCenter(), 416)
+            if not self.nearVortEnergy and #vortEnergy > 0 then
+                print("User is nearing Vort Energy - Disabling Glorious Glove Grabbity behaviour!")
+                self.enabled = false
+                self:OnUntarget(glove)
+                self:OnUntether(glove)
+                for i, event in pairs(self.eventList) do
+                    StopListeningToGameEvent(event)
+                    self.eventList[i] = nil
+                end
+                self.eventList = {
+                    ListenToGameEvent("grabbity_glove_pull", function(context) self:ListenToGrabbityEvent(context, glove) end, nil)
+                }
+                self.nearVortEnergy = true
+            elseif self.nearVortEnergy and #vortEnergy <= 0 then
+                print("User has left the area with Vort Energy - restoring Glorious Gloves Grabbity behaviour")
+                self.enabled = true
+                for i, event in pairs(self.eventList) do
+                    StopListeningToGameEvent(event)
+                    self.eventList[i] = nil
+                end
+                self.eventList = {
+                    ListenToGameEvent("item_pickup", function(context) self:CheckPickup(context, glove) end, nil)  -- What's the purpose of the third parameter, set nil here?
+                }
+                self.nearVortEnergy = false
+            end
+            return 1
+        end;
+
+        ListenToGrabbityEvent = function (self, context, glove)
+            if (context["vr_tip_attachment"] == Input.GetEventHandSelection(glove.hand)) then
+                glove:PrintVerbose("Default grabbity observed for glove (" .. Input.GetHandSelection(glove.hand) .. ")")
+                glove.tether.movingEntity = EntIndexToHScript(context["entindex"])
+                glove.tether.moveTime = Time()
+            end
+        end;
 
 
 
@@ -658,12 +781,13 @@ Grabbity = class(
 
         RENDER_INTERVAL = 0.05;
         DOOR_PULL_DELAY = 1 / 30;   -- TODO Make this one frame length
+        SHOTGUN_SHELL_SEARCH_RADIUS = 12;
 
         VALIDITY_OVERRIDE = {
-            minDistance = 25;
+            minDistance = 18;--25;
             maxDistance = 400;
-            maxMass = 50;
-            maxSize = 72;
+            maxMass = 55;--50
+            maxSize = 80;--72;
             scaleMassWithDistance = true;
             ignoreClass = {
                 "prop_door_rotating_physics",

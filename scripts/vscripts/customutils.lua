@@ -1,15 +1,21 @@
 -- A cleanly packaged function which permanently adds an output to an entity (creates a permanent unique name for said entity if it is nameless)
-function AddEntityOutput (outputEntity, outputName, outputTargetEntity, action, parameter, delay, fireOnce)
+function AddEntityOutput (outputEntity, outputName, outputTarget, action, parameter, delay, fireOnce)
     
     parameter = parameter or ""
     delay = delay or 0
     fireOnce = fireOnce or false
     
     local maxTimesToFire = -1 if fireOnce then maxTimesToFire = 1 end
-    local target = outputTargetEntity:GetName()
-    if target == "" then
-        target = UniqueString()
-        outputTargetEntity:SetEntityName(target)
+
+    local target
+    if type(outputTarget) == "string" then
+        target = outputTarget
+    else
+        target = outputTarget:GetName()
+        if target == "" then
+            target = UniqueString()
+            outputTarget:SetEntityName(target)
+        end
     end
     
     local output = outputName ..">".. target ..">".. action ..">".. parameter ..">".. delay ..">".. maxTimesToFire
@@ -69,6 +75,7 @@ ParticleSystem = class(
         controlPoints;
         eventList;
 
+        available;
         markedForDestruction;
 
 
@@ -77,7 +84,8 @@ ParticleSystem = class(
 
             self.IDENTIFIER = UniqueString()
             self.PARTICLE_NAME = particleName
-            self.UNNAMED_ENTITY = "unnamed_" .. self.PARTICLE_NAME .. self.IDENTIFIER .. "entity_"
+            self.UNNAMED_ENTITY = "unnamed_particle_" .. self.IDENTIFIER .. "entity_"
+            self.available = true
 
             self.eventList = {
                 ListenToGameEvent("change_level_activated", function() self:DisableParticleSystem(true) end, nil);
@@ -93,10 +101,11 @@ ParticleSystem = class(
 
             startEnabled = startEnabled or false
 
-            self:DisableParticleSystem(true, nil, true) -- ensures no leftover particles -- DEPRECATED?
+            --self:DisableParticleSystem(true, nil, true) -- ensures no leftover particles -- DEPRECATED?
             self.markedForDestruction = false
+            self.available = false
 
-            Glove.Print("Creating \"" .. self.PARTICLE_NAME .. "\" particle system from control points")
+            ParticleSystem.Print("Creating \"" .. self.PARTICLE_NAME .. self.IDENTIFIER .. "\" particle system from control points")
 
             self.controlPoints = tControlPoints
 
@@ -189,13 +198,15 @@ ParticleSystem = class(
                 
                 if name == ParticleSystem.CONTROL_POINT_NAME then
                     -- Control point was procedurally generated, so let's make the name unique
-                    name = self.PARTICLE_NAME .. self.IDENTIFIER .. ParticleSystem.CONTROL_POINT_NAME .. tostring(index)
-                    entity:SetEntityName(name)
+                    name = self.IDENTIFIER .. ParticleSystem.CONTROL_POINT_NAME .. tostring(index)
                 elseif name == "" then
                     -- Control point is a nameless entity; give a name
                     name = self.UNNAMED_ENTITY .. tostring(index)
-                    entity:SetEntityName(name)
+                elseif not name:find(self.IDENTIFIER) then
+                    name = name .. self.IDENTIFIER
                 end
+
+                entity:SetEntityName(name)
 
                 return name
 
@@ -234,11 +245,11 @@ ParticleSystem = class(
 
                 if immediate then
                     local output = "Stop" if destroy then output = "DestroyImmediately" end
-                    Glove.Print("Disabling \"" .. self.PARTICLE_NAME .. "\" immediately (\"" .. output .. "\")")
+                    ParticleSystem.Print("Disabling \"" .. self.PARTICLE_NAME .. "\" immediately (\"" .. output .. "\")")
                     EntFireByHandle(self.particleSystem, self.particleSystem, output, "", delay)
                     delay = delay + ParticleSystem.IMMEDIATE_DESTROY_DELAY
                 else
-                    Glove.Print("Disabling \"" .. self.PARTICLE_NAME .. "\" gently")
+                    ParticleSystem.Print("Disabling \"" .. self.PARTICLE_NAME .. "\" gently")
                     EntFireByHandle(self.particleSystem, self.particleSystem, "StopPlayEndCap", "", delay)
                     delay = delay + ParticleSystem.WAIT_FOR_FADEOUT_DELAY
                 end
@@ -266,23 +277,27 @@ ParticleSystem = class(
                     
                     local controlPointName = controlPoint:GetName()
                     if controlPointName:find(ParticleSystem.CONTROL_POINT_NAME) then
-                        Glove.Print("Removing particle control point")
+                        ParticleSystem.Print("Removing particle " .. self.IDENTIFIER .. " control point")
                         controlPoint:RemoveSelf()
                     elseif controlPointName:find(self.UNNAMED_ENTITY) then
-                        Glove.Print("Reverting particle entity name")
+                        ParticleSystem.Print("Reverting particle " .. self.IDENTIFIER .. " entity to be nameless")
                         controlPoint:SetEntityName("")
+                    elseif controlPointName:find(self.IDENTIFIER) then
+                        ParticleSystem.Print("Reverting particle " .. self.IDENTIFIER .. " entity name")
+                        controlPoint:SetEntityName(controlPoint:GetName():gsub(self.IDENTIFIER, "")[1])
                     end
-
                 end
             end
 
             if IsValidEntity(refs.particleSystem) then
 
-                Glove.Print("Removing \"" .. self.PARTICLE_NAME .. "\" particle system")
+                ParticleSystem.Print("Removing \"" .. self.PARTICLE_NAME .. self.IDENTIFIER .. "\" particle system")
 
                 refs.particleSystem:RemoveSelf()
 
             end
+
+            self.available = true
 
         end;
 
@@ -292,7 +307,7 @@ ParticleSystem = class(
         __class__name = "ParticleSystem";
 
         -- TODO: Set based on FPS; if the delay is faster than the framerate, then you risk the destroy being called in the same frame as the particle stop I/O
-        IMMEDIATE_DESTROY_DELAY = 1 / 30;
+        IMMEDIATE_DESTROY_DELAY = 1 / 20;
         WAIT_FOR_FADEOUT_DELAY = 10;
 
         CONTROL_POINT_NAME = "control_point_";
@@ -316,7 +331,7 @@ ParticleSystem.ControlPoint = function (entity, origin, angles, manualFollow, at
         entity = ParticleSystem.ConfigureControlPoint(controlPoint, entity, origin, angles, manualFollow, attachment)
 
     else
-        Glove.Print("Particle control point already populated, not overwriting")
+        ParticleSystem.Print("Particle control point already populated, not overwriting")
     end
 
     return entity;
@@ -380,4 +395,12 @@ ParticleSystem.Follow = function (entity, parent, refs)
 
     return ParticleSystem.FOLLOW_UPDATE_INTERVAL
 
+end;
+
+
+
+ParticleSystem.Print = function (message)
+    if Convars:GetBool("glorious_gloves_verbose") then
+        print("GGVerbose>" .. message)
+    end
 end;

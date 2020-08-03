@@ -7,6 +7,7 @@ Gesture = class(
         motionDirection;
         relativeTo;
         useVelocityDirection;
+        velocityDirectionFactor;
         motionThreshold;
         minMotionIncidence;
         maxMotionIncidence;
@@ -20,6 +21,7 @@ Gesture = class(
             self.motionDirecton = tGesture.motionDirection or Gesture.MOTION_ANY
             self.relativeTo = tGesture.relativeTo or nil
             self.useVelocityDirection = tGesture.useVelocityDirection or false
+            self.velocityDirectionFactor = tGesture.velocityDirectionFactor or 1
             self.motionThreshold = tGesture.motionThreshold or Gesture.THRESHOLD_NONE
             self.minMotionIncidence = tGesture.minMotionIncidence or Gesture.BACKWARD
             self.maxMotionIncidence = tGesture.maxMotionIncidence or Gesture.FORWARD
@@ -54,7 +56,7 @@ Gesture = class(
                 end
 
                 if self.useVelocityDirection then
-                    motionVector = motionVector:Length() * motion.velocity:Normalized()
+                    motionVector = motionVector * (1 - self.velocityDirectionFactor) + (motionVector:Length() * motion.velocity:Normalized()) * self.velocityDirectionFactor
                 end
 
             end

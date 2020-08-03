@@ -27,6 +27,7 @@ Glove = class(
         detector;
         tether;
         behaviours;
+        lastBehaviourTime;
 
         motion;
 
@@ -51,6 +52,7 @@ Glove = class(
             self.detector = DetectionSphere(self.hand, trigger, radius, forwardOffset)
             self.behaviours = {}
             self:CheckForWeapon(handSelection)
+            self.lastBehaviourTime = Time()
 
             self.UPDATE_INTERVAL = updateInterval or Glove.DEFAULT_UPDATE_INTERVAL
             self.INCIDENCE_AT_MAX_ANGLE = math.cos(math.rad(self.detector.FOV / 2));
@@ -296,7 +298,7 @@ Glove = class(
 
 
         PrintVerbose = function (self, message)
-            if Glove.VERBOSE then
+            if Convars:GetBool("glorious_gloves_verbose") then
                 local hand = "Unknown"
                 if Input.GetHandSelection(self.hand) == Input.LEFT then hand = "Left"
                 elseif Input.GetHandSelection(self.hand) == Input.RIGHT then hand = "Right" end
@@ -338,8 +340,6 @@ Glove = class(
 
     {
         __class__name = "Glove";
-        
-        VERBOSE = true;
 
         DEFAULT_UPDATE_INTERVAL = 1 / 48;
 
@@ -357,7 +357,7 @@ Glove = class(
 
 
 Glove.Print = function (message)
-    if Glove.VERBOSE then
+    if Convars:GetBool("glorious_gloves_verbose") then
         print("GGVerbose>" .. message)
     end
 end

@@ -1,5 +1,5 @@
 local unsupportedMapList = {
-    "a5_vault",
+    --"a5_vault",
     "a5_ending",
 }
 
@@ -17,6 +17,8 @@ end
 
 
 local function GlovesInit ()
+
+    Convars:RegisterConvar("glorious_gloves_verbose", "0", "Enables significantly verbose output from various Glorious Gloves scripts", 0)
 
     local currentMap = GetMapName()
     local isSupportedMap = true

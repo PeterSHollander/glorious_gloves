@@ -2,6 +2,7 @@ require "device/input"
 require "gloves/lib/validity"
 require "gloves/lib/motion"
 require "gloves/lib/gesture"
+require "gloves/behaviours/grabbity"
 require "/customutils"
 
 local CustomDebug = require "/debug"
@@ -11,7 +12,7 @@ local CustomDebug = require "/debug"
 Levitate = class(
 
     {
-        MIN_DISTANCE_BUFFER = 8;
+        COMFORTABLE_DISTANCE = 15;--8;
         MAX_DISTANCE_BUFFER = 2;
         MAX_LEVITATION_SPEED = 650;
         DISCONNECT_DELAY = 0.5;
@@ -44,8 +45,8 @@ Levitate = class(
             print("Initializing \"Levitate\" behaviour...")
 
             self.levitateValidity = Validity( {
-                minDistance = 7;
-                maxDistance = 42;
+                minDistance = 0;    --7 -- Be careful with 0 as distance; right now levitate will ONLY work on glove.tether.movingEntity, not by just closing your hand
+                maxDistance = 52.5 + self.MAX_DISTANCE_BUFFER;
                 maxMass = 300;
                 minSize = 4;
                 minIncidence = 0.25;
@@ -85,7 +86,7 @@ Levitate = class(
                 };
             } )
 
-            self.levitateValidity.maxSize = 2 * ((self.levitateValidity.maxDistance - self.MAX_DISTANCE_BUFFER) - self.levitateValidity.minDistance)
+            self.levitateValidity.maxSize = 2 * ((self.levitateValidity.maxDistance - self.MAX_DISTANCE_BUFFER) - self.COMFORTABLE_DISTANCE)
 
             self.grabbityValidity = Validity(Grabbity.VALIDITY_OVERRIDE)
 
@@ -167,7 +168,7 @@ Levitate = class(
                 else
                     local absBounds = entity:GetBoundingMaxs() - entity:GetBoundingMins()
                     local size = math.max(absBounds.x, math.max(absBounds.y, absBounds.z))
-                    idealDistance = self.levitateValidity.minDistance + size / 2 + self.MIN_DISTANCE_BUFFER
+                    idealDistance = size / 2 + self.COMFORTABLE_DISTANCE
                 end
 
                 local deltaPos = (glove.hand:GetAbsOrigin() + glove.hand:GetForwardVector() * idealDistance) - entity:GetCenter()
@@ -197,10 +198,12 @@ Levitate = class(
 
         OnTether = function (self, glove)
             if (self.levitateValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) > 0
-            and (self.grabbityValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) <= 0
-              or glove.tether.tetheredEntity == glove.tether.movingEntity) ) then
+            --and (self.grabbityValidity:GetValidity(glove.hand, glove.tether.tetheredEntity) <= 0
+            --  or glove.tether.tetheredEntity == glove.tether.movingEntity) ) then
+            and glove.tether.tetheredEntity == glove.tether.movingEntity) then
                 glove:PrintVerbose("Tether is valid for Levitation - Levitating...")
                 self:SpawnTether(glove)
+                glove.tether:Untarget(glove)
                 glove.alreadyFired = true
                 self.hasTether = true
                 glove.tether.movingEntity = nil

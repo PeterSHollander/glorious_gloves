@@ -96,7 +96,7 @@ Validity = class(
                 local originToEntity = entityPos - originPos
                 local distance = originToEntity:Length()
                 local mass = entity:GetMass()
-                local size = (entity:GetBoundingMaxs() - entity:GetBoundingMins()):Length()
+                local size = (entity:GetBoundingMaxs() - entity:GetBoundingMins()):Length() * entity:GetAbsScale()
 
                 -- TODO: Make "forward" be based on how far away the hand is from the body (closer to body, tilt detection cone forward towards palm)
                 local forwardReference
@@ -294,7 +294,8 @@ Validity = class(
             "item_.+",
             "prop_reviver_heart",
             "npc_manhack",
-            --"prop_door_rotating_physics",
+            "prop_door_rotating_physics",
+            "point_vort_energy",
         };
         DEFAULT_IMPORTANT_MODEL = {
             ".*keycard_%d%d%d.*",
@@ -302,7 +303,13 @@ Validity = class(
             --".*hat_construction.*",
             --".*respirator_.*",
             --".*mask.*",
-            ".*industrial_board_%d%d.vmdl",
+            ".*explosive.*",
+            ".*drum.*",
+            ".*barrel_plastic_1.vmdl",
+            ".*barrel_plastic_1_open.vmdl",
+            ".*/plastic_container_.+",
+            ".*wood_crate.*",
+            ".*industrial_board_%dd.vmdl",
         };
 
         ITEM_ATTACHMENT_CLASSNAMES = {

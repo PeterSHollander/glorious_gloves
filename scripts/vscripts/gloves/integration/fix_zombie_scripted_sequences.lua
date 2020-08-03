@@ -45,6 +45,13 @@ function Activate()
                         zombie:SetHealth(zombie:GetHealth() + ZOMBIE_HEALTH_BUFFER)
                         patchedZombieList[zombieIndex] = zombie
                         zombieHealth[zombieIndex] = zombie:GetHealth()
+
+                        if GetMapName() == "a2_headcrabs_tunnel" then
+                            if zombie:GetName():find("zombie_smash_doorway") then
+                                print("Found shotgun zombie trio member - telling them to enable physics when their sequence is done")
+                                AddEntityOutput(scriptedSequence, "OnCancelSequence", zombie, "physdamagescale", "1")
+                            end
+                        end
                     end
                 end
             end

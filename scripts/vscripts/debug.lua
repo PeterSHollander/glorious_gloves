@@ -3,7 +3,7 @@
 local CustomDebug = {}
 
 
-
+--[[
     function CustomDebug.DrawOrigin (entity, length, interval)
 
         local origin = entity:GetAbsOrigin()
@@ -14,7 +14,7 @@ local CustomDebug = {}
         return interval
 
     end
-
+--]]
 
 
     function CustomDebug.DrawArc (startPos, endPos, arcHeight, arcDirection, segments, r, g, b, ztest, duration)

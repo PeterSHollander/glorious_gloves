@@ -121,7 +121,7 @@ function Input.GetController (hand)
             end
         end
 
-        Warning("Provided \"hand\" entity (" .. hand:GetClassname() .. ") in Input.GetController() does not have valid parent(s)!\n")
+        Warning("Provided \"hand\" entity (" .. classname .. ") in Input.GetController() does not have valid parent(s)!\n")
         return nil
 
     else
@@ -175,6 +175,14 @@ function Input.GetPrimaryHand ()
         return Input.LEFT
     else
         return Input.RIGHT
+    end
+end
+
+function Input.GetOffHand ()
+    if Convars:GetBool(Input.PRIMARY_LEFT_HAND_COMMAND) then
+        return Input.RIGHT
+    else
+        return Input.LEFT
     end
 end
 

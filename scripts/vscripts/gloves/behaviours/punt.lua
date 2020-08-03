@@ -7,7 +7,7 @@ local CustomDebug = require "/debug"
 Punt = class (
 
     {
-        GESTURE_COOLDOWN = 0.67;
+        GESTURE_COOLDOWN = 0.25;
 
         PUNT_FORCE = 5000000;                   -- The force punting will exert on the object, in footpounds I guess? Foot-kilograms...?
         PUNT_MAX_SPEED = 1000;                  -- Most entities will probably be subject to this speed cap.
@@ -19,6 +19,7 @@ Punt = class (
         PADLOCK_PUNT_SPEED = 1500;
         DOOR_PUNT_SPEED = 400;
         PUSH_SPEED_MULTIPLIER = 5;
+        PUNT_VELOCITY_WEIGHT = 0.95;
 
         EXPLODE_UPDATE_INTERVAL = 0.025;
         MANHACK_UPDATE_INTERVAL = 0.01;
@@ -39,12 +40,11 @@ Punt = class (
         puntAngleOffset;
 
         gesture;
-        gestureTime;
 
         headcrabDamage;
         padlockDamage;
         manhackDamage;
-        flippedAntlions;
+        antlionHealthDelta;
 
 
 
@@ -53,17 +53,17 @@ Punt = class (
             print("Initializing \"Punt\" behaviour...")
 
             -- TODO: Do we need an accurate damage force?
-            self.headcrabDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), 5, DMG_PHYSGUN)
-            self.padlockDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), 5, DMG_BULLET)
+            self.headcrabDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), Punt.NORMAL_HEADCRAB_HEALTH, DMG_PHYSGUN)
+            self.padlockDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), 20, DMG_BULLET)
             self.manhackDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), 100, DMG_BULLET)
             self.antlionDamage = CreateDamageInfo(Entities:GetLocalPlayer(), glove.hand, Vector(0, 0, 0), Vector(0, 0, 0), Punt.ANTLION_HEALTH, DMG_PHYSGUN)
-            self.flippedAntlions = {}
+            self.antlionHealthDelta = {}
 
             self.puntValidity = Validity( {
-                minDistance = 10;
+                minDistance = 0;--10;
                 maxDistance = 200;
-                minMass = 0.2;
                 maxMass = 5000;
+                minSize = 4;
                 maxSize = 750;
                 minIncidence = 0.8;
                 requireCentre = false;  -- Not implemented yet
@@ -102,8 +102,12 @@ Punt = class (
                 importantModel = {
                     ".*industrial_board_%d%d.vmdl",
                     ".*padlock%d%d%da.*",
-                    -- barrels?
-                    -- grenades?
+                    ".*explosive.*",
+                    ".*drum.*",
+                    ".*barrel_plastic_1.vmdl",
+                    ".*barrel_plastic_1_open.vmdl",
+                    ".*/plastic_container_.+",
+                    ".*wood_crate.*",
                 };
             } )
 
@@ -121,14 +125,14 @@ Punt = class (
                 angleOffset = QAngle(3, -5, 0);
                 requireCentre = false;
                 ignoreClass = {
-                    ".*",
+                    ".*_.*",
                 };
                 allowClassOverride = {
                     "npc_.*"
                 };
-                allowModelOverride = {
-
-                };
+                allowModelOverride = { };
+                importantClass = { };
+                importantModel = { };
             } )
             
             if Input.GetHandSelection(glove.hand) == Input.RIGHT then self.puntAutotargetValidity.angleOffset.y = -self.puntAutotargetValidity.angleOffset.y end
@@ -138,6 +142,7 @@ Punt = class (
                 motionType = Gesture.MOTION_ACCELERATION;
                 motionDirection = Gesture.MOTION_INCREASING;
                 --useVelocityDirection = true;
+                --velocityDirectionFactor = 0.67;
                 motionThreshold = 775;
                 minMotionIncidence = 0.8;
             } )
@@ -156,8 +161,6 @@ Punt = class (
                 [1] = ParticleSystem.ControlPoint();
             } );
 
-            self.gestureTime = Time()
-
         end;
 
 
@@ -166,7 +169,7 @@ Punt = class (
             
             if (self.gesture:IsGesturing(glove.motion)
             and not self.grabbityGesture:IsGesturing(glove.motion)
-            and glove.motion.time - self.gestureTime >= self.GESTURE_COOLDOWN ) then
+            and glove.motion.time - glove.lastBehaviourTime >= self.GESTURE_COOLDOWN ) then
 
                 glove:PrintVerbose("Punt gesture recognized")
 
@@ -213,7 +216,8 @@ Punt = class (
 
                 end
                 
-                self.gestureTime = glove.motion.time
+                glove.lastBehaviourTime = glove.motion.time
+
                 glove.alreadyFired = true
 
                 return true
@@ -236,7 +240,9 @@ Punt = class (
                 self:WatchForImpactManhack(glove, entity, "Break")
             elseif classname:match("npc_headcrab.*") then
                 glove:PrintVerbose("Punt target is Headcrab - damaging")
+                self.headcrabDamage:SetDamage(0.34 * (Punt.NORMAL_HEADCRAB_HEALTH / Punt.MASS_MULTIPLIER.NORMAL) * Punt.MassMultiplier())    -- Update every time in case the user changes difficulty mid-game
                 self.headcrabDamage:SetDamagePosition(entity:GetCenter())
+                self.headcrabDamage:SetDamageForce((entity:GetCenter() - glove.hand:GetCenter()):Normalized() * 150)
                 entity:SetThink(function() entity:TakeDamage(self.headcrabDamage) end, "WaitToTakeDamage", 1/30)
                 puntSpeed = self.HEADCRAB_PUNT_SPEED
             elseif modelName:match(".*padlock%d%d%da.*") then
@@ -245,23 +251,36 @@ Punt = class (
                 entity:SetThink(function() entity:TakeDamage(self.padlockDamage) end, "WaitToTakeDamage", 1/30)
                 puntSpeed = self.PADLOCK_PUNT_SPEED
             elseif classname:match("npc_antlion.*") then
-                glove:PrintVerbose("Punt target is Antlion - flipping")
                 if entity:GetGraphParameter("b_flip") then
-                    glove:PrintVerbose("Antlion is flipped - damaging")
+                    glove:PrintVerbose("Punted Antlion is flipped - restoring health and damaging")
+                    entity:SetHealth(entity:GetHealth() + self.antlionHealthDelta[entity])
                     self.antlionDamage:SetDamage(0.5 * (Punt.ANTLION_HEALTH / Punt.MASS_MULTIPLIER.NORMAL) * Punt.MassMultiplier())    -- Update every time in case the user changes difficulty mid-game
                     self.antlionDamage:SetDamagePosition(entity:GetCenter())
-                    entity:SetThink(function() entity:TakeDamage(self.antlionDamage) end, "WaitToTakeDamage", 1/30)
+                    entity:SetThink(function()
+                        entity:TakeDamage(self.antlionDamage)
+                        self.antlionHealthDelta[entity] = entity:GetHealth() - Punt.ANTLION_VULNERABLE_HEALTH
+                        entity:SetHealth(Punt.ANTLION_VULNERABLE_HEALTH)
+                    end, "WaitToTakeDamage", 1/30)
+                else
+                    glove:PrintVerbose("Punt target is Antlion - flipping and making vulnerable")
+                    EntFireByHandle(glove.hand, entity, "SetAnimgraphParameter", "b_flip=true")
+                    AddEntityOutput(entity, "OnDamaged", entity, "RunScriptCode", "print(thisEntity:GetHealth())")
+                    entity:SetBodygroup(7, 1)
+                    self.antlionHealthDelta[entity] = entity:GetHealth() - Punt.ANTLION_VULNERABLE_HEALTH
+                    entity:SetHealth(Punt.ANTLION_VULNERABLE_HEALTH)
+                    --print("FLIPPED:", entity:GetHealth())
+                    AddEntityOutput(entity, "OnDamaged", entity, "RunScriptCode", "print('DAMAGED:', thisEntity:GetHealth())")
+                    entity:RegisterAnimTagListener(function(tag)
+                        if tag == "Finished_Flip" then
+                            glove:PrintVerbose("Antlion finished flip - disabling punt damage and restoring health")
+                            EntFireByHandle(glove.hand, entity, "SetAnimgraphParameter", "b_flip=false")
+                            entity:SetBodygroup(7, 0)   -- TODO: Will reset pulsing abdomen even if the antlion is dismembered
+                            entity:UnregisterAnimTagListener(nil)
+                            entity:SetHealth(entity:GetHealth() + self.antlionHealthDelta[entity])
+                            self.antlionHealthDelta[entity] = nil
+                        end
+                    end)
                 end
-                EntFireByHandle(glove.hand, entity, "SetAnimgraphParameter", "b_flip=true")
-                entity:SetBodygroup(7, 1)
-                entity:RegisterAnimTagListener(function(tag)
-                    if tag == "Finished_Flip" then
-                        glove:PrintVerbose("Antlion finished flip, disabling punt damage")
-                        EntFireByHandle(glove.hand, entity, "SetAnimgraphParameter", "b_flip=false")
-                        entity:SetBodygroup(7, 0)   -- TODO: Will reset pulsing abdomen even if the antlion is dismembered
-                        entity:UnregisterAnimTagListener(nil)
-                    end
-                end)
                 --[[ -- TakeDamage() does not dismember antlions
                 local tRaycast = {
                     startpos = glove.hand:GetCenter();
@@ -302,6 +321,8 @@ Punt = class (
                 puntDirection = targetEntity:GetCenter() - entity:GetCenter()
             else
                 puntDirection = ApplyAngleOffset(entity, self.puntAutotargetValidity.angleOffset, glove.hand:GetForwardVector(), glove.hand:GetUpVector())
+                -- TODO: Punt where only the pitch of the wrist is overridden by velocity direction; yaw of hand should remain 100% influence
+                puntDirection = puntDirection * (1 - self.PUNT_VELOCITY_WEIGHT) + glove.motion.velocity:Normalized() * self.PUNT_VELOCITY_WEIGHT
             end
             local puntVelocity = puntSpeed * puntDirection
 
@@ -362,10 +383,10 @@ Punt = class (
                 --EntFireByHandle(glove.hand, entity, "RetractLatch", "", delay)
                 delay = Grabbity.DOOR_PULL_DELAY
                 --EntFireByHandle(glove.hand, entity, "InteractStop", "", delay + Grabbity.DOOR_PULL_DELAY)
-            elseif entity:GetModelName():find("oildrum001") then
-                glove:PrintVerbose("Punted entity is oil drum - Interacting and delaying just in case motion is disabled")
+            elseif GetPhysVelocity(entity) == Vector(0, 0, 0) then
+                glove:PrintVerbose("Punted entity is stationary - Interacting and delaying just in case motion is disabled")
                 EntFireByHandle(glove.hand, entity, "EnableMotion") -- Annoying overhead to ensure you can punt the instructive barrels in a2_pistol out of the way
-                delay = 1/30
+                delay = FrameTime()
             end
             return delay
         end;
@@ -515,10 +536,10 @@ Punt = class (
         __class__name = "Punt";
 
         MASS_MULTIPLIER = {
-            STORY = 10;      -- 1 knocked hit on Antlion; 1 cardboard box hit on Zombie; 1 plaster can hit on Heavy Soldier
-            EASY = 1.5;        -- 1 knocked hit on Antlion; 1 plaster can hit on Zombie; 1 barrel hit on Heavy Soldier
-            NORMAL = 0.5;    -- 2 knocked hits on Antlion; 1 (close) barrel hit on Zombie; 2 barrel hits on Combine
-            HARD = 0.25;     -- 4 knocked hits on Antlion; 2 barrel hits on Zombie; 3 barrel hits on Combine
+            STORY = 5;      -- 1 knocked hit on Antlion; 1 cardboard box hit on Zombie; 1 plaster can hit on Heavy Soldier; 1 succesful punt on headcrab
+            EASY = 2;        -- 1 knocked hit on Antlion; 1 plaster can hit on Zombie; 1 barrel hit on Heavy Soldier; 2 successful punts on headcrab
+            NORMAL = 1;    -- 2 knocked hits on Antlion; 1 barrel hit on Zombie; 1 barrel hit on Combine; 3 successful punts on headcrab
+            HARD = 0.5;     -- 4 knocked hits on Antlion; 2 barrel hits on Zombie; 2 barrel hits on Combine; 6 successful punts on headcrab
         };
         DIFFICULTY = {
             STORY = 0;
@@ -527,6 +548,8 @@ Punt = class (
             HARD = 3;
         };
         ANTLION_HEALTH = 95;
+        ANTLION_VULNERABLE_HEALTH = 1;
+        NORMAL_HEADCRAB_HEALTH = 20;
 
         -- Haven't figured out how to access KeyValue prop data yet, so we're just gonna brute force the explosive objects
         EXPLOSIVE_MODELS = {

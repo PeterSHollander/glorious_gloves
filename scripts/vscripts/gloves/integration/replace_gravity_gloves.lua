@@ -44,6 +44,8 @@ gloveActiveTime = 0
 
 reinitialize = false
 
+nearVortEnergy = false
+
 
 
 function Precache (context)
@@ -101,7 +103,7 @@ function Initialize ()
     -- Not a fan of the (albeit minimal) overhead of constantly checking for the Gravity Gloves.  Wish there was a game event.
     print("Searching for original Gravity Gloves...")
     SEARCH_INTERVAL = 0.1
-    thisEntity:SetThink(ReplaceGravityGloves, "SearchingForGravityGloves")
+    thisEntity:SetThink(ReplaceGravityGloves, "SearchingForGravityGloves")--, INITIALIZATION_DELAY)
 
 end
 
@@ -175,6 +177,8 @@ function ReplaceGravityGloves ()
             EntFireByHandle(thisEntity, thisEntity, "RunScriptCode", "Configure(PUNTY_PAWS)")
             EntFireByHandle(thisEntity, thisEntity, "RunScriptCode", "Configure(LEVITATOR_LIMBS)", 1/30)
             EntFireByHandle(thisEntity, thisEntity, "RunScriptCode", "Configure(GRABBITY_GLOVES)", 2/30)
+            
+            thisEntity:SetThink(WatchForVortEnergy, "SearchingForVortEnergy", 3/30)
         end
 
     end
@@ -204,11 +208,13 @@ function RemoveGravityGloves ()
 
                         if classname == AMMO_COUNTER_CLASSNAME then
 
-                            if not CheckForGloriousGloves() then
+                            if not IsValidEntity(ammoCounter) then
                                 print("Found ammo counter - preserving...")
                                 child:SetParent(Input.GetHandRenderable(controller), "grabbity_glove")
                                 ammoCounter = child
+                            end
 
+                            if not healthStatus then
                                 print("Generating health status replacement...")
                                 healthStatus = HealthStatus(Input.GetHandRenderable(controller), HEARTS_OFFSET, HEARTS_ANGLE_OFFSET, "grabbity_glove")
                             end
@@ -223,6 +229,16 @@ function RemoveGravityGloves ()
                         else
                             print("Found non-essential entity \"" .. classname .. "\" - removing...")
                             child:RemoveSelf()
+                        end
+                    end
+
+                    -- Don't know why don't have time to look into it but apparently in the Vault when dealing with default/glorious hybrid gloves
+                    -- the health status and ammo counter don't respawn, because I can't access the gravity glove's children for some reason,
+                    -- so brute force it is
+                    if not healthStatus then
+                        if Input.GetHandSelection(controller) == Input.GetOffHand() then
+                            print("Generating health status replacement...")
+                            healthStatus = HealthStatus(Input.GetHandRenderable(controller), HEARTS_OFFSET, HEARTS_ANGLE_OFFSET, "grabbity_glove")
                         end
                     end
                     
@@ -276,10 +292,14 @@ function RevertGravityGloves ()
 
         print("Reverting to default Gravity Gloves...") -- Glorious Glove removal currently handled in gloves/core.lua
         
-        if healthStatus then healthStatus:Remove() end
+        if healthStatus then
+            healthStatus:Remove()
+            healthStatus = nil
+        end
         if IsValidEntity(ammoCounter) then 
-            print("Removing ammo counter")
+            print("Removing and disassociating ammo counter")
             ammoCounter:RemoveSelf()
+            ammoCounter = nil
         end
         
         SEARCH_INTERVAL = nil
@@ -324,8 +344,25 @@ function RespawnGravityGloves ()
 
     local equip = SpawnEntityFromTableSynchronous("info_hlvr_equip_player", tProperties)
     EntFireByHandle(thisEntity, equip, "EquipNow")
-    EntFireByHandle(thisEntity, equip, "Kill", "", FrameTime())
+    EntFireByHandle(thisEntity, equip, "Kill", "", 1)
 
+end
+
+
+
+function WatchForVortEnergy ()
+    local vortEnergy = Entities:FindAllByClassnameWithin("point_vort_energy", Entities:GetLocalPlayer():GetCenter(), 416)
+    if not nearVortEnergy and #vortEnergy > 0 then
+        print("User is nearing Vort Energy - this feature is not fully supported and the Gloves will partially revert to the default Gravity Gloves!")
+        -- Riiiggghht, since I'm not removing the gloves in core.lua at this point, it's only re-adding the Gravity Gloves!
+        RevertGravityGloves()
+        nearVortEnergy = true
+    elseif nearVortEnergy and #vortEnergy <= 0 then
+        print("User has left the area with Vort Energy - restoring Glorious Gloves")
+        Initialize()
+        nearVortEnergy = false
+    end
+    return 1
 end
 
 
