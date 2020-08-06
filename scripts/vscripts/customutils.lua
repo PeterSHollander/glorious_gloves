@@ -283,8 +283,9 @@ ParticleSystem = class(
                         ParticleSystem.Print("Reverting particle " .. self.IDENTIFIER .. " entity to be nameless")
                         controlPoint:SetEntityName("")
                     elseif controlPointName:find(self.IDENTIFIER) then
-                        ParticleSystem.Print("Reverting particle " .. self.IDENTIFIER .. " entity name")
-                        controlPoint:SetEntityName(controlPoint:GetName():gsub(self.IDENTIFIER, "")[1])
+                        local originalName = controlPoint:GetName():gsub(self.IDENTIFIER, "")
+                        controlPoint:SetEntityName(originalName)
+                        ParticleSystem.Print("Reverted particle " .. self.IDENTIFIER .. " entity name to \"" .. controlPoint:GetName() .. "\"")
                     end
                 end
             end
