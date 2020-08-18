@@ -3,7 +3,7 @@ local unsupportedMapList = {
     "a5_ending",
 }
 
-local gameEvents = {}
+local gameEventContext = {}
 
 
 
@@ -45,18 +45,10 @@ local function GlovesInit ()
         print("Map \"" .. currentMap .. "\" is not supported by the Glorious Gloves mod at this time.")
     end
 
-    for _, gameEvent in pairs(gameEvents) do StopListeningToGameEvent(gameEvent) end
+    StopListeningToAllGameEvents(gameEventContext)
 
 end
 
 
 
--- Apparently the second game event listener you register in the same frame (probably of the same name) doesn't actually register its function, but all subsequent listeners do?
--- So as to protect not disabling a second game event listener in another subsequently executed script, we should register a second game event listener that calls an empty function, thereby blocking that unregisterable listener from being used
--- And to protect our own function from not being the second disabled game event, we should have our first game event listener call an empty function
--- Thus we need to call our function in the third game event listener, as that guarantees it will be called no matter the situation.  So janky.
-gameEvents = {
-    ListenToGameEvent("player_activate", function() end, nil),
-    ListenToGameEvent("player_activate", function() end, nil),
-    ListenToGameEvent("player_activate", GlovesInit, nil),
-}
+ListenToGameEvent("player_activate", GlovesInit, gameEventContext)
