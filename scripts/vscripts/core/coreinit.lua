@@ -82,7 +82,7 @@ EnforceAddonDependency = function (workshopID, addonName, addonConvar, overrideA
                     " " )
             end
 
-            -- This command will fail in Hammer/tools mode (which is fine, this file isn't needed during development anyway)
+            -- This command will fail in Hammer/tools mode (which is fine, all dependent files should be temporarily copied to the local directory during development anyway)
             SubmitConsoleCommand("addon_play " .. GetMapName():gsub(".*/", ""):gsub("%..*", ""))
 
         else

@@ -330,9 +330,9 @@ function RespawnGravityGloves ()
                 print("Preserving wrist pocket")
                 tProperties.itemholder = 1
             elseif classname == FLASHLIGHT_CLASSNAME then
-                tProperties.flashlight = 1
-                print("Removing and preserving flashlight")
-                child:RemoveSelf()
+                --tProperties.flashlight = 1    -- DO NOT respawn Gravity Glove flashlight here, as respawning will overwrite current flashlight on/off state
+                print("Preserving flashlight")
+                --child:RemoveSelf()
             elseif classname == AMMO_COUNTER_CLASSNAME then
                 print("Removing ammo counter")
                 child:RemoveSelf()
